@@ -23,3 +23,5 @@ __pycache__/
 *.log
 .env
 .env.*
+# Sensitive runtime config (copy from config.example.php)
+backend/src/Config/config.php

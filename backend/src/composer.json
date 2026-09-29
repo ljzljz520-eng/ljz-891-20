@@ -6,7 +6,8 @@
         "psr-4": {
             "Controllers\\": "Controllers/",
             "Config\\": "Config/",
-            "Services\\": "Services/"
+            "Services\\": "Services/",
+            "Middleware\\": "Middleware/"
         }
     }
 }

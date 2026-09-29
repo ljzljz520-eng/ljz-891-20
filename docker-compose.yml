@@ -25,6 +25,20 @@ services:
       - "8891:80"
     volumes:
       - ./backend/src:/var/www/html
+    # 敏感配置（数据库密码、SMTP 授权码、APP 密钥）优先从同目录 config.php 读取，
+    # 也可通过下方环境变量覆盖。config.php 已被 .gitignore 忽略，不会提交到仓库。
+    # 复制 backend/src/Config/config.example.php 为 config.php 并按需修改。
+    environment:
+      # - APP_SECRET=请替换为随机字符串
+      # - DB_HOST=db
+      # - DB_NAME=auth_system
+      # - DB_USER=root
+      # - DB_PASS=root
+      # - MAIL_HOST=smtp.163.com
+      # - MAIL_USERNAME=your_account@163.com
+      # - MAIL_PASSWORD=your_smtp_auth_code
+      # - MAIL_PORT=465
+      # - MAIL_ENCRYPTION=ssl
     depends_on:
       - db
     networks:

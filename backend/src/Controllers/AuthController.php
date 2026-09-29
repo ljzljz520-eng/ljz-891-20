@@ -2,6 +2,7 @@
 namespace Controllers;
 
 use Config\Database;
+use Middleware\Auth;
 use PDO;
 
 class AuthController {
@@ -13,7 +14,7 @@ class AuthController {
 
     public function login() {
         $data = json_decode(file_get_contents("php://input"));
-        
+
         if (!isset($data->username) || !isset($data->password)) {
             http_response_code(400);
             echo json_encode(["message" => "Missing credentials"]);
@@ -28,19 +29,18 @@ class AuthController {
         if ($stmt->rowCount() > 0) {
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if (password_verify($data->password, $row['password'])) {
-                // ... success ...
                 http_response_code(200);
                 echo json_encode([
                     "message" => "Login successful",
                     "user" => $row['username'],
-                    "token" => base64_encode($row['username'] . ":" . time())
+                    "token" => Auth::issueToken($row['username'])
                 ]);
                 return;
             }
         }
 
         http_response_code(401);
-        echo json_encode(["message" => "Login failed"]);
+        echo json_encode(["message" => "用户名或密码错误"]);
     }
     public function list() {
         $query = "SELECT id, username FROM admins";

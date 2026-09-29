@@ -37,9 +37,12 @@ CREATE TABLE IF NOT EXISTS verification_codes (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Seed Data (Test Accounts)
--- Password is '123456' hashed with BCRYPT (Cost 10)
-INSERT INTO admins (username, password) VALUES 
-('admin', '$2y$10$eLYd0HGc9JM0qxzPkpLtDuL1UZRAS6XAwgVNO7oL9R0M/f/6bkEcW'); 
+-- 默认管理员: admin / 123456  (BCRYPT cost=10 哈希存储，数据库中不保存明文密码)
+-- 安全提示: 生产环境请务必修改默认密码！可通过后台「管理员管理」修改，
+--           或用 PHP 生成新哈希后替换下方密码字段:
+--           php -r "echo password_hash('你的新密码', PASSWORD_BCRYPT, ['cost' => 10]);"
+INSERT INTO admins (username, password) VALUES
+('admin', '$2y$10$eLYd0HGc9JM0qxzPkpLtDuL1UZRAS6XAwgVNO7oL9R0M/f/6bkEcW');
 
 -- Seed Data (Sample Licenses)
 INSERT INTO licenses (qq, owner_name, product_name, upline, expiration_date) VALUES 

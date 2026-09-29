@@ -2,13 +2,17 @@
 namespace Controllers;
 
 use Config\Database;
+use Config\Settings;
 use PDO;
 
 class LicenseController {
     private $db;
+    private $mailConfig;
 
     public function __construct($db) {
         $this->db = $db;
+        $config = Settings::load();
+        $this->mailConfig = $config['mail'];
     }
 
     // Public Query
@@ -124,12 +128,14 @@ class LicenseController {
             $mail->SMTPDebug = 2; // Enable verbose debug output
             $mail->Debugoutput = 'error_log'; // Output to stderr
             $mail->isSMTP();
-            $mail->Host       = 'smtp.163.com';
+            $mail->Host       = $this->mailConfig['host'];
             $mail->SMTPAuth   = true;
-            $mail->Username   = 'yuwangifeng@163.com';
-            $mail->Password   = 'LRZMA358wePVGa8F'; 
-            $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
-            $mail->Port       = 465;
+            $mail->Username   = $this->mailConfig['username'];
+            $mail->Password   = $this->mailConfig['password'];
+            $mail->SMTPSecure = $this->mailConfig['encryption'] === 'tls'
+                ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS
+                : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port       = $this->mailConfig['port'];
             $mail->CharSet    = 'UTF-8';
 
             // Allow self-signed certs (matches Node.js permissive behavior)
@@ -141,8 +147,8 @@ class LicenseController {
                 )
             );
 
-            //Recipients - Name removed to match Node example exactly
-            $mail->setFrom('yuwangifeng@163.com');
+            //Recipients
+            $mail->setFrom($this->mailConfig['username'], $this->mailConfig['from_name']);
             $mail->addAddress($email);
             
             // Set HELO to localhost to avoid Docker container ID rejection

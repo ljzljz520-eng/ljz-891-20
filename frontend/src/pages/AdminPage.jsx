@@ -4,6 +4,9 @@ import { toast } from 'react-hot-toast';
 import { Lock, User, Plus, Trash2, Search, Sliders, Users, Shield } from 'lucide-react';
 import Modal from '../components/Modal';
 
+// 统一携带令牌，供后端鉴权中间件校验
+axios.defaults.headers.common['Authorization'] = 'Bearer ' + (localStorage.getItem('auth_token') || '');
+
 export default function AdminPage() {
   const [token, setToken] = useState(localStorage.getItem('auth_token'));
   const [username, setUsername] = useState('');
@@ -35,6 +38,23 @@ export default function AdminPage() {
     }
   }, [token]);
 
+  // 令牌过期或失效时，后端返回 401，自动退出登录
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      res => res,
+      err => {
+        if (err.response && err.response.status === 401) {
+          localStorage.removeItem('auth_token');
+          delete axios.defaults.headers.common['Authorization'];
+          setToken(null);
+          toast.error('登录已过期，请重新登录');
+        }
+        return Promise.reject(err);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, []);
+
   useEffect(() => {
     if (!searchTerm) {
       setFilteredLicenses(licenses);
@@ -53,6 +73,7 @@ export default function AdminPage() {
     try {
       const res = await axios.post('/api/auth/login', { username, password });
       localStorage.setItem('auth_token', res.data.token);
+      axios.defaults.headers.common['Authorization'] = 'Bearer ' + res.data.token;
       setToken(res.data.token);
       toast.success('欢迎回来，管理员');
     } catch (err) {
@@ -179,7 +200,7 @@ export default function AdminPage() {
              />
              <Search className="absolute left-3 top-2.5 w-4 h-4 text-white/30" />
            </div>
-           <button onClick={() => {localStorage.removeItem('auth_token'); setToken(null);}} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/60 hover:text-red-400 transition border border-white/5 hover:border-red-500/30">
+           <button onClick={() => {localStorage.removeItem('auth_token'); delete axios.defaults.headers.common['Authorization']; setToken(null);}} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/60 hover:text-red-400 transition border border-white/5 hover:border-red-500/30">
              退出登录
            </button>
         </div>
