@@ -7,5 +7,12 @@ export default defineConfig({
   server: {
     host: true,
     port: 3000,
-  }
+    proxy: {
+      // 本地开发时把 /api 请求代理到 PHP 后端（Docker: http://localhost:8891）
+      '/api': {
+        target: process.env.VITE_API_TARGET || 'http://localhost:8891',
+        changeOrigin: true,
+      },
+    },
+  },
 })

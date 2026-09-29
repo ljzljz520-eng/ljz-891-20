@@ -1,19 +1,26 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.0
     container_name: auth_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: auth_system
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-auth_system}
+      # 留空时官方镜像会跳过专用账号创建，直接使用 root
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      TZ: Asia/Shanghai
     volumes:
       - db_data:/var/lib/mysql
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:
-      - "18891:3306"
+      - "${DB_PORT_HOST:-18891}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     networks:
       - app_network
 
@@ -22,11 +29,27 @@ services:
     container_name: auth_backend
     restart: always
     ports:
-      - "8891:80"
+      - "${BACKEND_PORT:-8891}:80"
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-auth_system}
+      DB_USER: ${DB_USER:-root}
+      DB_PASS: ${DB_PASS:-root}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-*}
+      MAIL_HOST: ${MAIL_HOST:-smtp.163.com}
+      MAIL_PORT: ${MAIL_PORT:-465}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-ssl}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_VERIFY_SSL: ${MAIL_VERIFY_SSL:-true}
     volumes:
       - ./backend/src:/var/www/html
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - app_network
 
@@ -35,7 +58,7 @@ services:
     container_name: auth_frontend
     restart: always
     ports:
-      - "3891:80"
+      - "${FRONTEND_PORT:-3891}:80"
     depends_on:
       - backend
     networks:

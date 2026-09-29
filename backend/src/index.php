@@ -1,5 +1,8 @@
 <?php
-header("Access-Control-Allow-Origin: *");
+// 全局配置（数据库、邮件、应用参数）
+$config = require __DIR__ . '/Config/config.php';
+
+header("Access-Control-Allow-Origin: " . $config['app']['cors_origin']);
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS");
 header("Access-Control-Max-Age: 3600");
@@ -25,6 +28,11 @@ use Controllers\LicenseController;
 
 $database = new Database();
 $db = $database->getConnection();
+
+// 数据库不可用时不再继续路由，避免逐接口报错泄露细节
+if ($db === null) {
+    exit();
+}
 
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $uriParts = explode('/', $uri);

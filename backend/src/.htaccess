@@ -1,4 +1,15 @@
 RewriteEngine On
+
+# 禁止浏览器直接访问配置目录（含数据库口令、SMTP 授权码的 config.php）
+RewriteRule ^(Config|config)/ - [F,L]
+
+# 禁止访问点文件（.env、.git、.htaccess 等）
+RewriteRule (^|/)\. - [F,L]
+
+# 禁止访问 composer 元数据、SQL/日志/脚本等非入口文件
+RewriteRule (^|/)(composer\.(json|lock)|.*\.(sql|log|ini|sh))$ - [F,L]
+
+# 所有不存在的文件/目录统一交给 index.php 路由
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.php [QSA,L]

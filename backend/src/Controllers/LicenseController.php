@@ -108,43 +108,65 @@ class LicenseController {
     // Update Flow: Step 1 - Send Code
     public function sendVerificationCode() {
         $data = json_decode(file_get_contents("php://input"));
+        if (!isset($data->qq) || !preg_match('/^[1-9][0-9]{4,11}$/', $data->qq)) {
+            http_response_code(400);
+            echo json_encode(["message" => "QQ号码格式不正确"]);
+            return;
+        }
         $qq = $data->qq;
         $email = $qq . "@qq.com";
-        
-        $code = rand(100000, 999999);
-        
+
+        $config = require __DIR__ . '/../Config/config.php';
+        $mailCfg = $config['mail'];
+        $debug = $config['app']['debug'];
+
+        $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
         // Save code
         $stmt = $this->db->prepare("INSERT INTO verification_codes (type, identifier, code, expires_at) VALUES ('update_license', :email, :code, DATE_ADD(NOW(), INTERVAL 10 MINUTE))");
         $stmt->execute([':email' => $email, ':code' => $code]);
-        
+
+        // 未配置 SMTP 账号时：开发模式返回模拟验证码，生产模式直接报错
+        if ($mailCfg['user'] === '' || $mailCfg['pass'] === '') {
+            if ($debug) {
+                echo json_encode(["message" => "未配置SMTP（模拟模式）", "mock_code" => $code]);
+            } else {
+                error_log("SMTP not configured");
+                http_response_code(503);
+                echo json_encode(["message" => "邮件服务未配置，请联系管理员"]);
+            }
+            return;
+        }
+
         // Real Email Sending via PHPMailer
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         try {
             //Server settings
-            $mail->SMTPDebug = 2; // Enable verbose debug output
+            $mail->SMTPDebug = $debug ? 2 : 0; // 调试输出仅在开发模式开启
             $mail->Debugoutput = 'error_log'; // Output to stderr
             $mail->isSMTP();
-            $mail->Host       = 'smtp.163.com';
+            $mail->Host       = $mailCfg['host'];
             $mail->SMTPAuth   = true;
-            $mail->Username   = 'yuwangifeng@163.com';
-            $mail->Password   = 'LRZMA358wePVGa8F'; 
-            $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
-            $mail->Port       = 465;
+            $mail->Username   = $mailCfg['user'];
+            $mail->Password   = $mailCfg['pass'];
+            $mail->SMTPSecure = strtolower($mailCfg['encryption']) === 'tls'
+                ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS
+                : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port       = $mailCfg['port'];
             $mail->CharSet    = 'UTF-8';
 
-            // Allow self-signed certs (matches Node.js permissive behavior)
+            // 生产环境默认校验证书；仅在配置允许时放宽（自签证书内网场景）
             $mail->SMTPOptions = array(
                 'ssl' => array(
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true
+                    'verify_peer'       => $mailCfg['verify_ssl'],
+                    'verify_peer_name'  => $mailCfg['verify_ssl'],
+                    'allow_self_signed' => !$mailCfg['verify_ssl']
                 )
             );
 
-            //Recipients - Name removed to match Node example exactly
-            $mail->setFrom('yuwangifeng@163.com');
+            $mail->setFrom($mailCfg['from'] ?: $mailCfg['user']);
             $mail->addAddress($email);
-            
+
             // Set HELO to localhost to avoid Docker container ID rejection
             $mail->Hostname = 'localhost';
 
@@ -158,34 +180,46 @@ class LicenseController {
         } catch (\Exception $e) {
             // Fallback for demo/dev if SMTP fails
             error_log("SMTP Error: {$mail->ErrorInfo}");
-            echo json_encode([
-                 "message" => "邮件发送失败 (转为模拟模式)", 
-                 "mock_code" => $code,
-                 "debug_error" => $mail->ErrorInfo
-            ]);
+            if ($debug) {
+                echo json_encode([
+                     "message" => "邮件发送失败 (转为模拟模式)",
+                     "mock_code" => $code,
+                     "debug_error" => $mail->ErrorInfo
+                ]);
+            } else {
+                http_response_code(502);
+                echo json_encode(["message" => "验证码发送失败，请稍后重试"]);
+            }
         }
     }
 
     // Update Flow: Step 2 - Verify & Update
     public function update() {
         $data = json_decode(file_get_contents("php://input"));
-        // Expect: qq, code, new_owner, new_product...
-        
-        $email = $data->qq . "@qq.com";
-        $code = $data->code;
-        
-        // Verify Code
-        $stmt = $this->db->prepare("SELECT * FROM verification_codes WHERE identifier=:email AND code=:code AND expires_at > NOW() ORDER BY id DESC LIMIT 1");
-        $stmt->execute([':email' => $email, ':code' => $code]);
-        
-        if ($stmt->rowCount() == 0) {
+        if (!isset($data->qq, $data->code, $data->owner_name) || trim($data->owner_name) === '') {
             http_response_code(400);
-            echo json_encode(["message" => "Invalid or expired code"]);
+            echo json_encode(["message" => "参数不完整"]);
             return;
         }
-        
+
+        $email = $data->qq . "@qq.com";
+        $code = $data->code;
+
+        // Verify Code（只取最新一条有效记录）
+        $stmt = $this->db->prepare("SELECT id FROM verification_codes WHERE identifier=:email AND code=:code AND expires_at > NOW() ORDER BY id DESC LIMIT 1");
+        $stmt->execute([':email' => $email, ':code' => $code]);
+
+        if ($stmt->rowCount() == 0) {
+            http_response_code(400);
+            echo json_encode(["message" => "验证码无效或已过期"]);
+            return;
+        }
+
+        // 验证码一次性使用，校验通过后立即删除该邮箱的全部记录
+        $this->db->prepare("DELETE FROM verification_codes WHERE identifier = :email")
+                 ->execute([':email' => $email]);
+
         // Update License
-        // For demo, assume we update the owner name for this QQ
         $updateQ = "UPDATE licenses SET owner_name = :new_owner WHERE qq = :qq";
         $ustmt = $this->db->prepare($updateQ);
         $ustmt->execute([':new_owner' => $data->owner_name, ':qq' => $data->qq]); // assuming we update owner
